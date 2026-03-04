@@ -86,7 +86,14 @@
 
     .stack { display: grid; gap: 18px; margin-bottom: 18px; }
     .section { padding: 16px; }
-    .section h2 { margin: 0 0 10px; font-size: 18px; }
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
 
     .table-wrap {
       overflow: auto;
@@ -202,7 +209,10 @@
 
     <div class="stack">
       <div class="panel section">
-        <h2>Курьерская доставка</h2>
+        <h2>
+          <span>Курьерская доставка</span>
+          <span class="count-badge" id="courierSummaryCount">0</span>
+        </h2>
         <div class="table-wrap">
           <table>
             <thead>
@@ -339,6 +349,7 @@
       cancelledBody: document.getElementById("cancelledBody"),
       forecastBody: document.getElementById("forecastBody"),
       errorBox: document.getElementById("errorBox"),
+      courierSummaryCount: document.getElementById("courierSummaryCount"),
       postSummaryCount: document.getElementById("postSummaryCount"),
       cancelledSummaryCount: document.getElementById("cancelledSummaryCount"),
       kpiOrders: document.getElementById("kpiOrders"),
@@ -571,16 +582,25 @@
       return "";
     }
 
-    function renderCommonRows(target, rows, mode) {
+    function collectActiveRows(rows, mode) {
       const filtered = [];
-      for (let i = 0; i < rows.length; i += 1) if (rows[i].deliveryMode === mode) filtered.push(rows[i]);
-      if (!filtered.length) {
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        if (row.deliveryMode !== mode) continue;
+        if (row.status === "Отменен") continue;
+        filtered.push(row);
+      }
+      return filtered;
+    }
+
+    function renderActiveRows(target, rows) {
+      if (!rows.length) {
         target.innerHTML = '<tr><td colspan="7"><div class="empty">Нет данных</div></td></tr>';
-        return filtered.length;
+        return;
       }
       let html = "";
-      for (let i = 0; i < filtered.length; i += 1) {
-        const row = filtered[i];
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
         html += '<tr>' +
           '<td>' + escapeHtml(row.orderId) + '</td>' +
           '<td>' + escapeHtml(row.operator) + '</td>' +
@@ -592,16 +612,18 @@
           '</tr>';
       }
       target.innerHTML = html;
-      return filtered.length;
     }
 
     function renderCourier(rows) {
-      renderCommonRows(els.courierBody, rows, "Курьер");
+      const filtered = collectActiveRows(rows, "Курьер");
+      els.courierSummaryCount.textContent = String(filtered.length);
+      renderActiveRows(els.courierBody, filtered);
     }
 
     function renderPost(rows) {
-      const count = renderCommonRows(els.postBody, rows, "Почта");
-      els.postSummaryCount.textContent = String(count);
+      const filtered = collectActiveRows(rows, "Почта");
+      els.postSummaryCount.textContent = String(filtered.length);
+      renderActiveRows(els.postBody, filtered);
     }
 
     function renderCancelled(rows) {
@@ -656,8 +678,8 @@
       let postCount = 0, courierCount = 0, sales = 0, buyout = 0, forecast = 0;
       for (let i = 0; i < rows.length; i += 1) {
         const row = rows[i];
-        if (row.deliveryMode === "Почта") postCount += 1;
-        if (row.deliveryMode === "Курьер") courierCount += 1;
+        if (row.deliveryMode === "Почта" && row.status !== "Отменен") postCount += 1;
+        if (row.deliveryMode === "Курьер" && row.status !== "Отменен") courierCount += 1;
         sales += row.saleCheck;
         buyout += row.factBuyout;
         forecast += row.forecastAmount;
