@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Светлый дашборд доставок</title>
+  <title>Дашборд доставок</title>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root {
@@ -142,7 +142,7 @@
 
     .calendar-tools {
       display: grid;
-      grid-template-columns: 240px 1fr;
+      grid-template-columns: 240px auto auto 1fr;
       gap: 12px;
       margin-bottom: 14px;
       align-items: end;
@@ -420,6 +420,14 @@
           <label for="monthSelect">Месяц</label>
           <select id="monthSelect"></select>
         </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="prevMonthBtn" class="button-soft">← Назад</button>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="nextMonthBtn" class="button-soft">Вперед →</button>
+        </div>
         <div></div>
       </div>
       <div class="calendar-grid" id="calendarHead">
@@ -509,6 +517,8 @@
       toDate: document.getElementById("toDate"),
       sortSelect: document.getElementById("sortSelect"),
       monthSelect: document.getElementById("monthSelect"),
+      prevMonthBtn: document.getElementById("prevMonthBtn"),
+      nextMonthBtn: document.getElementById("nextMonthBtn"),
       resetBtn: document.getElementById("resetBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
       courierBody: document.getElementById("courierBody"),
@@ -678,6 +688,7 @@
 
     function isPaidStatus(status) { return status === "Оплачен" || status === "Оплачен курьер"; }
     function isCancelledStatus(status) { return status === "Отменен"; }
+    function isSentStatus(status) { return status === "Отправлен" || status === "Отправлен почта"; }
 
     function isPostalRow(deliveryRaw, typeRaw) {
       const deliveryText = normalizeText(deliveryRaw);
@@ -884,6 +895,7 @@
       for (let i = 0; i < rows.length; i += 1) {
         const row = rows[i];
         if (!row.deliveryDate) continue;
+        if (!isSentStatus(row.status)) continue;
         const dKey = dateKey(row.deliveryDate);
         const mKey = monthKey(row.deliveryDate);
         if (!grouped[dKey]) grouped[dKey] = { date: row.deliveryDate, rows: [], amount: 0 };
@@ -1049,6 +1061,22 @@
       els.monthSelect.addEventListener('change', function () {
         state.activeMonthKey = els.monthSelect.value;
         renderCalendar(state.filtered);
+      });
+      els.prevMonthBtn.addEventListener('click', function () {
+        const idx = state.monthKeys.indexOf(state.activeMonthKey);
+        if (idx > 0) {
+          state.activeMonthKey = state.monthKeys[idx - 1];
+          els.monthSelect.value = state.activeMonthKey;
+          renderCalendar(state.filtered);
+        }
+      });
+      els.nextMonthBtn.addEventListener('click', function () {
+        const idx = state.monthKeys.indexOf(state.activeMonthKey);
+        if (idx !== -1 && idx < state.monthKeys.length - 1) {
+          state.activeMonthKey = state.monthKeys[idx + 1];
+          els.monthSelect.value = state.activeMonthKey;
+          renderCalendar(state.filtered);
+        }
       });
       els.resetBtn.addEventListener("click", resetFilters);
       els.refreshBtn.addEventListener("click", loadData);
