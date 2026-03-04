@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Светлый дашборд доставок</title>
+  <title>Дашборд доставок</title>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root {
@@ -138,6 +138,17 @@
       display: inline-flex; align-items: center; justify-content: center; min-width: 34px;
       padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
       background: #f1f5f9; border: 1px solid var(--line);
+    }
+
+    .forecast-stack { display: grid; gap: 12px; }
+    .forecast-item.panel { box-shadow: none; }
+    .forecast-item summary {
+      padding: 14px 16px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .forecast-meta {
+      display: inline-flex; align-items: center; gap: 10px;
     }
 
     .empty { padding: 18px; text-align: center; color: var(--muted); }
@@ -280,21 +291,36 @@
           </div>
         </div>
       </details>
+
+      <details class="panel">
+        <summary>
+          <span>Оплаченные заказы</span>
+          <span class="count-badge" id="paidSummaryCount">0</span>
+        </summary>
+        <div class="section" style="padding-top:0;">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-key="orderId">ID</th>
+                  <th data-key="operator">Оператор</th>
+                  <th data-key="deliveryMode">Тип</th>
+                  <th data-key="createdAt">Дата оформления</th>
+                  <th data-key="deliveryDate">Дата доставки</th>
+                  <th data-key="status">Статус</th>
+                  <th data-key="saleCheck">Чек продажи</th>
+                </tr>
+              </thead>
+              <tbody id="paidBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div class="panel section">
       <h2>Прогноз по датам</h2>
-      <div class="table-wrap" style="max-height: 420px;">
-        <table style="min-width: 520px;">
-          <thead>
-            <tr>
-              <th>Дата доставки</th>
-              <th>Сумма</th>
-            </tr>
-          </thead>
-          <tbody id="forecastBody"></tbody>
-        </table>
-      </div>
+      <div class="forecast-stack" id="forecastContainer"></div>
       <div class="error" id="errorBox"></div>
     </div>
   </div>
@@ -347,11 +373,13 @@
       courierBody: document.getElementById("courierBody"),
       postBody: document.getElementById("postBody"),
       cancelledBody: document.getElementById("cancelledBody"),
-      forecastBody: document.getElementById("forecastBody"),
+      paidBody: document.getElementById("paidBody"),
+      forecastContainer: document.getElementById("forecastContainer"),
       errorBox: document.getElementById("errorBox"),
       courierSummaryCount: document.getElementById("courierSummaryCount"),
       postSummaryCount: document.getElementById("postSummaryCount"),
       cancelledSummaryCount: document.getElementById("cancelledSummaryCount"),
+      paidSummaryCount: document.getElementById("paidSummaryCount"),
       kpiOrders: document.getElementById("kpiOrders"),
       kpiPost: document.getElementById("kpiPost"),
       kpiCourier: document.getElementById("kpiCourier"),
@@ -570,6 +598,7 @@
       renderCourier(rows);
       renderPost(rows);
       renderCancelled(rows);
+      renderPaid(rows);
       renderForecast(rows);
     }
 
@@ -588,6 +617,7 @@
         const row = rows[i];
         if (row.deliveryMode !== mode) continue;
         if (row.status === "Отменен") continue;
+        if (isPaidStatus(row.status)) continue;
         filtered.push(row);
       }
       return filtered;
@@ -651,6 +681,31 @@
       els.cancelledBody.innerHTML = html;
     }
 
+    function renderPaid(rows) {
+      const filtered = [];
+      for (let i = 0; i < rows.length; i += 1) if (isPaidStatus(rows[i].status)) filtered.push(rows[i]);
+      els.paidSummaryCount.textContent = String(filtered.length);
+      if (!filtered.length) {
+        els.paidBody.innerHTML = '<tr><td colspan="7"><div class="empty">Нет данных</div></td></tr>';
+        return;
+      }
+      let html = "";
+      for (let i = 0; i < filtered.length; i += 1) {
+        const row = filtered[i];
+        const modeClass = row.deliveryMode === "Почта" ? "violet" : "blue";
+        html += '<tr>' +
+          '<td>' + escapeHtml(row.orderId) + '</td>' +
+          '<td>' + escapeHtml(row.operator) + '</td>' +
+          '<td><span class="chip ' + modeClass + '">' + escapeHtml(row.deliveryMode) + '</span></td>' +
+          '<td>' + formatDate(row.createdAt) + '</td>' +
+          '<td>' + formatDate(row.deliveryDate) + '</td>' +
+          '<td><span class="chip green">' + escapeHtml(row.status) + '</span></td>' +
+          '<td>' + formatMoney(row.saleCheck) + '</td>' +
+          '</tr>';
+      }
+      els.paidBody.innerHTML = html;
+    }
+
     function renderForecast(rows) {
       const grouped = {};
       const ordered = [];
@@ -658,28 +713,59 @@
         const row = rows[i];
         if (!row.deliveryDate || row.forecastAmount <= 0) continue;
         const key = row.deliveryDate.getFullYear() + "-" + String(row.deliveryDate.getMonth() + 1).padStart(2, "0") + "-" + String(row.deliveryDate.getDate()).padStart(2, "0");
-        if (!grouped[key]) { grouped[key] = { date: row.deliveryDate, amount: 0 }; ordered.push(key); }
+        if (!grouped[key]) {
+          grouped[key] = { date: row.deliveryDate, amount: 0, rows: [] };
+          ordered.push(key);
+        }
         grouped[key].amount += row.forecastAmount;
+        grouped[key].rows.push(row);
       }
       ordered.sort(function (a, b) { return grouped[a].date - grouped[b].date; });
+
       if (!ordered.length) {
-        els.forecastBody.innerHTML = '<tr><td colspan="2"><div class="empty">Нет данных для прогноза</div></td></tr>';
+        els.forecastContainer.innerHTML = '<div class="panel"><div class="empty">Нет данных для прогноза</div></div>';
         return;
       }
+
       let html = "";
       for (let i = 0; i < ordered.length; i += 1) {
         const item = grouped[ordered[i]];
-        html += '<tr><td>' + formatDate(item.date) + '</td><td>' + formatMoney(item.amount) + '</td></tr>';
+        let rowsHtml = '';
+        for (let j = 0; j < item.rows.length; j += 1) {
+          const row = item.rows[j];
+          const modeClass = row.deliveryMode === "Почта" ? "violet" : "blue";
+          rowsHtml += '<tr>' +
+            '<td>' + escapeHtml(row.orderId) + '</td>' +
+            '<td>' + escapeHtml(row.operator) + '</td>' +
+            '<td><span class="chip ' + modeClass + '">' + escapeHtml(row.deliveryMode) + '</span></td>' +
+            '<td><span class="chip ' + statusClass(row.status) + '">' + escapeHtml(row.status) + '</span></td>' +
+            '<td>' + formatMoney(row.forecastAmount) + '</td>' +
+            '</tr>';
+        }
+        html += '<details class="panel forecast-item">' +
+          '<summary>' +
+            '<span>' + formatDate(item.date) + '</span>' +
+            '<span class="forecast-meta"><span class="count-badge">' + item.rows.length + '</span><span class="count-badge">' + formatMoney(item.amount) + '</span></span>' +
+          '</summary>' +
+          '<div class="section" style="padding-top:0;">' +
+            '<div class="table-wrap" style="max-height:320px;">' +
+              '<table style="min-width:700px;">' +
+                '<thead><tr><th>ID</th><th>Оператор</th><th>Тип</th><th>Статус</th><th>Сумма</th></tr></thead>' +
+                '<tbody>' + rowsHtml + '</tbody>' +
+              '</table>' +
+            '</div>' +
+          '</div>' +
+        '</details>';
       }
-      els.forecastBody.innerHTML = html;
+      els.forecastContainer.innerHTML = html;
     }
 
     function renderKpis(rows) {
       let postCount = 0, courierCount = 0, sales = 0, buyout = 0, forecast = 0;
       for (let i = 0; i < rows.length; i += 1) {
         const row = rows[i];
-        if (row.deliveryMode === "Почта" && row.status !== "Отменен") postCount += 1;
-        if (row.deliveryMode === "Курьер" && row.status !== "Отменен") courierCount += 1;
+        if (row.deliveryMode === "Почта" && row.status !== "Отменен" && !isPaidStatus(row.status)) postCount += 1;
+        if (row.deliveryMode === "Курьер" && row.status !== "Отменен" && !isPaidStatus(row.status)) courierCount += 1;
         sales += row.saleCheck;
         buyout += row.factBuyout;
         forecast += row.forecastAmount;
